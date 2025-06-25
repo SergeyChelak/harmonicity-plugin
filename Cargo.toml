@@ -3,4 +3,11 @@ name = "harmonicity-plugin"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+
+[workspace]
+members = ["xtask"]
