@@ -1,16 +1,25 @@
-use nih_plug::prelude::*;
+mod oscillator;
+mod parameters;
+mod voice;
+mod waveform;
 
-pub struct HarmonicityPlugin {
-    // no fields yet
+use nih_plug::prelude::*;
+use parameters::*;
+use std::sync::Arc;
+
+pub struct Harmonicity {
+    params: Arc<HarmonicityParameters>,
 }
 
-impl Default for HarmonicityPlugin {
+impl Default for Harmonicity {
     fn default() -> Self {
-        Self {}
+        Self {
+            params: Arc::new(Default::default()),
+        }
     }
 }
 
-impl Plugin for HarmonicityPlugin {
+impl Plugin for Harmonicity {
     const NAME: &'static str = "Harmonicity Synthesizer";
 
     const VENDOR: &'static str = "Sergey Chelak";
@@ -36,7 +45,7 @@ impl Plugin for HarmonicityPlugin {
     const SAMPLE_ACCURATE_AUTOMATION: bool = true;
 
     fn params(&self) -> std::sync::Arc<dyn Params> {
-        todo!()
+        self.params.clone()
     }
 
     fn process(
@@ -49,7 +58,7 @@ impl Plugin for HarmonicityPlugin {
     }
 }
 
-impl Vst3Plugin for HarmonicityPlugin {
+impl Vst3Plugin for Harmonicity {
     const VST3_CLASS_ID: [u8; 16] = *b"Harmonicity_VST3";
 
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
@@ -59,4 +68,4 @@ impl Vst3Plugin for HarmonicityPlugin {
     ];
 }
 
-nih_export_vst3!(HarmonicityPlugin);
+nih_export_vst3!(Harmonicity);
