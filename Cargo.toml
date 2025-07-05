@@ -7,7 +7,9 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
+rand = "0.9.1"
+rand_pcg = "0.9.0"
 
 [workspace]
 members = ["xtask"]

@@ -1,10 +1,12 @@
 use nih_plug::{
-    params::{FloatParam, Params},
+    params::{EnumParam, FloatParam, Params},
     prelude::FloatRange,
 };
 
+use crate::waveform::Waveform;
+
 #[derive(Params)]
-pub struct HarmonicityParameters {
+pub struct SynthParameters {
     #[id = "env_attack"]
     attack_time: FloatParam,
     #[id = "env_decay"]
@@ -13,15 +15,18 @@ pub struct HarmonicityParameters {
     sustain_level: FloatParam,
     #[id = "env_release"]
     release_time: FloatParam,
+    #[id = "oscillator_wave_form"]
+    wave_form: EnumParam<Waveform>,
 }
 
-impl Default for HarmonicityParameters {
+impl Default for SynthParameters {
     fn default() -> Self {
         Self {
             attack_time: time_parameter("Attack", 200.0, 0.0, 2000.0),
             decay_time: time_parameter("Decay", 100.0, 0.0, 2000.0),
             sustain_level: sustain_parameter("Sustain", 0.85),
             release_time: time_parameter("Release", 100.0, 0.0, 2000.0),
+            wave_form: EnumParam::new("Waveform 1", Waveform::Sine),
         }
     }
 }
