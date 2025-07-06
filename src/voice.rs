@@ -102,6 +102,8 @@ impl VoiceBuilder {
             sustain_level: self.sustain_level,
             release_time: self.release_time,
             sample_rate: self.sample_rate,
+            // TODO: fix hardcoded value
+            gain: 0.3,
         }
     }
 }
@@ -122,6 +124,7 @@ pub struct Voice {
     sustain_level: f32,
     release_time: f32,
     sample_rate: f32,
+    gain: f32,
 }
 
 impl Voice {
@@ -154,7 +157,7 @@ impl Voice {
         if self.phase >= 1.0 {
             self.phase -= 1.0;
         }
-        sample * self.velocity * self.amp_envelope.next()
+        sample * self.velocity * self.amp_envelope.next() * self.gain
     }
 
     pub fn choke(&mut self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
