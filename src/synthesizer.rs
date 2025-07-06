@@ -28,7 +28,7 @@ impl Synthesizer {
         note: u8,
         channel: u8,
         velocity: f32,
-    ) -> &mut Voice {
+    ) {
         let voice = self.make_voice(
             context.transport().sample_rate,
             voice_id,
@@ -42,19 +42,20 @@ impl Synthesizer {
 
         if let Some(position) = position {
             self.voices[position] = Some(voice);
-            return self.voices[position].as_mut().unwrap();
+            return;
         }
 
         // otherwise steal the (oldest) voice
-        let old_voice = self
+        let Some(old_voice) = self
             .voices
             .iter_mut()
             .min_by_key(|v| v.as_ref().unwrap().age())
-            .unwrap();
+        else {
+            return;
+        };
 
-        Self::release_voice(context, timing, old_voice);
+        Self::terminate_voice(context, timing, old_voice);
         *old_voice = Some(voice);
-        return old_voice.as_mut().unwrap();
     }
 
     fn make_voice(
@@ -75,6 +76,13 @@ impl Synthesizer {
             .build()
     }
 
+    fn release_voice(&mut self, voice_id: Option<i32>, note: u8, channel: u8) {
+        self.voices
+            .iter_mut()
+            .filter_map(|v| v.as_mut())
+            .for_each(|v| v.release_note(voice_id, channel, note));
+    }
+
     fn next_age(&mut self) -> usize {
         let age = self.next_voice_age;
         self.next_voice_age += 1;
@@ -93,10 +101,10 @@ impl Synthesizer {
             .iter_mut()
             .filter(|voice| voice.is_some())
             .filter(|voice| voice.as_ref().unwrap().is_released())
-            .for_each(|voice| Self::release_voice(context, timing, voice))
+            .for_each(|voice| Self::terminate_voice(context, timing, voice))
     }
 
-    fn release_voice(
+    fn terminate_voice(
         context: &mut impl ProcessContext<Self>,
         timing: u32,
         voice: &mut Option<Voice>,
@@ -111,8 +119,27 @@ impl Synthesizer {
         *voice = None;
     }
 
-    fn process_event(&mut self, event: NoteEvent<()>) {
-        //
+    fn process_event(&mut self, context: &mut impl ProcessContext<Self>, event: NoteEvent<()>) {
+        match event {
+            NoteEvent::NoteOn {
+                timing,
+                voice_id,
+                channel,
+                note,
+                velocity,
+            } => {
+                self.start_voice(context, timing, voice_id, note, channel, velocity);
+            }
+            NoteEvent::NoteOff {
+                voice_id,
+                channel,
+                note,
+                ..
+            } => self.release_voice(voice_id, note, channel),
+            _ => {
+                // no op
+            }
+        }
     }
 
     fn render_sound(&mut self, output: &mut [&mut [f32]], block_start: usize, block_end: usize) {
@@ -184,7 +211,7 @@ impl Plugin for Synthesizer {
             while let Some(event) = context.next_event() {
                 let timing = event.timing() as usize;
                 if timing <= block_start {
-                    self.process_event(event);
+                    self.process_event(context, event);
                     continue;
                 }
                 if timing < block_end {

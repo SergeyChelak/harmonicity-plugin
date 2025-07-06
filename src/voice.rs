@@ -5,6 +5,9 @@ use nih_plug::{
 
 use crate::{parameters::SynthParameters, waveform::Waveform};
 
+const TOL: f32 = 1e-10;
+const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
+
 pub struct VoiceBuilder {
     sample_rate: f32,
     voice_id: Option<i32>,
@@ -93,7 +96,6 @@ impl VoiceBuilder {
             phase: self.phase,
             phase_delta,
             amp_envelope,
-            attack_time: self.attack_time,
             decay_time: self.decay_time,
             sustain_level: self.sustain_level,
             release_time: self.release_time,
@@ -114,7 +116,6 @@ pub struct Voice {
     phase: f32,
     phase_delta: f32,
     amp_envelope: Smoother<f32>,
-    attack_time: f32,
     decay_time: f32,
     sustain_level: f32,
     release_time: f32,
@@ -151,7 +152,13 @@ impl Voice {
         sample * self.velocity * self.amp_envelope.next()
     }
 
-    pub fn note_released(&mut self) {
+    pub fn release_note(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
+        let is_relevant =
+            voice_id == Some(self.voice_id) || self.channel == channel && self.note_number == note;
+
+        if !is_relevant {
+            return;
+        }
         self.state = VoiceState::Releasing;
         self.update_amp_envelope_style(self.release_time, 0.0);
     }
@@ -181,10 +188,6 @@ impl Voice {
         self.amp_envelope.set_target(self.sample_rate, target);
     }
 }
-
-const TOL: f32 = 1e-10;
-const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
-const ENVELOPE_SUSTAIN_LEVEL: f32 = 1.0;
 
 #[derive(Clone)]
 pub enum VoiceState {
