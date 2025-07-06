@@ -1,4 +1,5 @@
 use nih_plug::{
+    debug::nih_log,
     prelude::{Smoother, SmoothingStyle},
     util,
 };
@@ -83,6 +84,7 @@ impl VoiceBuilder {
         let phase_delta = util::midi_note_to_freq(self.note) / self.sample_rate;
 
         let amp_envelope = Smoother::new(SmoothingStyle::Exponential(self.attack_time));
+        amp_envelope.reset(0.0);
         amp_envelope.set_target(self.sample_rate, ENVELOPE_ATTACK_LEVEL);
 
         Voice {
@@ -90,7 +92,7 @@ impl VoiceBuilder {
             age: self.age,
             channel: self.channel,
             note_number: self.note,
-            velocity: self.velocity,
+            velocity: self.velocity.sqrt(),
             state: VoiceState::Attack,
             waveform: self.waveform,
             phase: self.phase,
@@ -144,6 +146,9 @@ impl Voice {
     }
 
     pub fn next_sample(&mut self) -> f32 {
+        if self.is_released() {
+            return 0.0;
+        }
         let sample = self.waveform.evaluate(self.phase);
         self.phase += self.phase_delta;
         if self.phase >= 1.0 {
@@ -152,15 +157,26 @@ impl Voice {
         sample * self.velocity * self.amp_envelope.next()
     }
 
-    pub fn release_note(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
-        let is_relevant =
-            voice_id == Some(self.voice_id) || self.channel == channel && self.note_number == note;
+    pub fn choke(&mut self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
+        if !self.is_relevant_voice(voice_id, channel, note) {
+            return false;
+        }
+        nih_log!("[envelope] choke {channel} {note}");
+        self.state = VoiceState::Released;
+        true
+    }
 
-        if !is_relevant {
+    pub fn release_note(&mut self, voice_id: Option<i32>, channel: u8, note: u8) {
+        if !self.is_relevant_voice(voice_id, channel, note) {
             return;
         }
+        nih_log!("[envelope] {channel} {note} releasing");
         self.state = VoiceState::Releasing;
         self.update_amp_envelope_style(self.release_time, 0.0);
+    }
+
+    fn is_relevant_voice(&self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
+        voice_id == Some(self.voice_id) || self.channel == channel && self.note_number == note
     }
 
     pub fn update_envelope(&mut self) {
@@ -168,13 +184,16 @@ impl Voice {
         let amp = self.amp_envelope.previous_value();
         match self.state {
             Attack if (amp - ENVELOPE_ATTACK_LEVEL).abs() < TOL => {
+                nih_log!("[envelope] attack -> decay");
                 self.state = Decay;
                 self.update_amp_envelope_style(self.decay_time, self.sustain_level);
             }
             Decay if (amp - self.sustain_level).abs() < TOL => {
+                nih_log!("[envelope] decay -> sustain");
                 self.state = Sustain;
             }
             Releasing if amp.abs() < TOL => {
+                nih_log!("[envelope] release -> deaf");
                 self.state = Released;
             }
             _ => {

@@ -29,6 +29,8 @@ impl Synthesizer {
         channel: u8,
         velocity: f32,
     ) {
+        nih_log!("[synth] start voice for {channel}:{note}");
+
         let voice = self.make_voice(
             context.transport().sample_rate,
             voice_id,
@@ -36,11 +38,10 @@ impl Synthesizer {
             note,
             velocity,
         );
-
         // find empty slot
         let position = self.voices.iter().position(|voice| voice.is_none());
-
         if let Some(position) = position {
+            nih_log!("[synth] voice at {position}");
             self.voices[position] = Some(voice);
             return;
         }
@@ -51,9 +52,15 @@ impl Synthesizer {
             .iter_mut()
             .min_by_key(|v| v.as_ref().unwrap().age())
         else {
+            nih_log!("[synth] failed to find voice for stealing");
             return;
         };
 
+        nih_log!(
+            "[synth] stealing voice with {}:{}",
+            old_voice.as_ref().unwrap().channel(),
+            old_voice.as_ref().unwrap().note()
+        );
         Self::terminate_voice(context, timing, old_voice);
         *old_voice = Some(voice);
     }
@@ -110,6 +117,12 @@ impl Synthesizer {
         voice: &mut Option<Voice>,
     ) {
         let voice_ref = voice.as_ref().unwrap();
+        nih_log!(
+            "[synth] terminating voice with {}:{}",
+            voice_ref.channel(),
+            voice_ref.note()
+        );
+
         context.send_event(NoteEvent::VoiceTerminated {
             timing,
             voice_id: Some(voice_ref.voice_id()),
@@ -136,8 +149,24 @@ impl Synthesizer {
                 note,
                 ..
             } => self.release_voice(voice_id, note, channel),
+            NoteEvent::Choke {
+                timing,
+                voice_id,
+                channel,
+                note,
+            } => {
+                self.voices.iter_mut().for_each(|v| {
+                    let Some(voice) = v else {
+                        return;
+                    };
+                    if voice.choke(voice_id, channel, note) {
+                        Self::terminate_voice(context, timing, v);
+                    }
+                });
+            }
             _ => {
                 // no op
+                nih_log!("[synth] unhandled event");
             }
         }
     }
@@ -190,6 +219,8 @@ impl Plugin for Synthesizer {
     }
 
     fn reset(&mut self) {
+        nih_log!("[synth] will reset");
+
         self.phase_generator = create_phase_generator();
         self.voices.fill(None);
         self.next_voice_age = 0;
@@ -206,17 +237,21 @@ impl Plugin for Synthesizer {
         let mut block_start = 0usize;
         let mut block_end = MAX_BLOCK_SIZE.min(samples_count);
 
+        let mut next_event = context.next_event();
         while block_start < samples_count {
             // process events
-            while let Some(event) = context.next_event() {
-                let timing = event.timing() as usize;
-                if timing <= block_start {
-                    self.process_event(context, event);
-                    continue;
-                }
-                if timing < block_end {
-                    block_end = timing;
-                    break;
+            'events: loop {
+                match next_event {
+                    Some(event) if event.timing() as usize <= block_start => {
+                        nih_log!("[synth] got event {:?}", event);
+                        self.process_event(context, event);
+                        next_event = context.next_event();
+                    }
+                    Some(event) if (event.timing() as usize) < block_end => {
+                        block_end = event.timing() as usize;
+                        break 'events;
+                    }
+                    _ => break 'events,
                 }
             }
             self.render_sound(output, block_start, block_end);
