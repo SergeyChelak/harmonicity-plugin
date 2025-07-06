@@ -1,11 +1,16 @@
 use nih_plug::prelude::*;
+use rand::Rng;
 use rand_pcg::Pcg32;
 use std::sync::Arc;
+
+use crate::voice::VoiceBuilder;
 
 use super::parameters::SynthParameters;
 use super::voice::Voice;
 
 const MAX_VOICES: usize = 16;
+
+const MAX_BLOCK_SIZE: usize = 64;
 
 pub struct Synthesizer {
     voices: [Option<Voice>; MAX_VOICES],
@@ -22,12 +27,17 @@ impl Synthesizer {
         voice_id: Option<i32>,
         note: u8,
         channel: u8,
+        velocity: f32,
     ) -> &mut Voice {
-        let voice_id = voice_id.unwrap_or_else(|| compute_fallback_voice_id(note, channel));
-        let voice = Voice::new(voice_id, self.next_voice_age, note, channel);
-        self.next_voice_age += 1;
+        let voice = self.make_voice(
+            context.transport().sample_rate,
+            voice_id,
+            channel,
+            note,
+            velocity,
+        );
 
-        // find voice
+        // find empty slot
         let position = self.voices.iter().position(|voice| voice.is_none());
 
         if let Some(position) = position {
@@ -45,6 +55,33 @@ impl Synthesizer {
         Self::release_voice(context, timing, old_voice);
         *old_voice = Some(voice);
         return old_voice.as_mut().unwrap();
+    }
+
+    fn make_voice(
+        &mut self,
+        sample_rate: f32,
+        voice_id: Option<i32>,
+        channel: u8,
+        note: u8,
+        velocity: f32,
+    ) -> Voice {
+        VoiceBuilder::new(sample_rate)
+            .channel_note(channel, note)
+            .age(self.next_age())
+            .voice_id(voice_id)
+            .phase(self.phase_generator.random())
+            .velocity(velocity)
+            .build()
+    }
+
+    fn next_age(&mut self) -> usize {
+        let age = self.next_voice_age;
+        self.next_voice_age += 1;
+        age
+    }
+
+    fn update_envelopes(&mut self) {
+        // TODO: implement
     }
 
     fn clean_released_voices(&mut self, context: &mut impl ProcessContext<Self>, timing: u32) {
@@ -68,6 +105,25 @@ impl Synthesizer {
             note: voice_ref.note(),
         });
         *voice = None;
+    }
+
+    fn process_event(&mut self, event: NoteEvent<()>) {
+        //
+    }
+
+    fn render_sound(&mut self, output: &mut [&mut [f32]], block_start: usize, block_end: usize) {
+        // We'll start with silence, and then add the output from the active voices
+        output[0][block_start..block_end].fill(0.0);
+        // output[1][block_start..block_end].fill(0.0);
+
+        // let block_len = block_end - block_start;
+        for voice in self.voices.iter_mut().filter_map(|v| v.as_mut()) {
+            // TODO: amp envelope
+            for (idx, sample_idx) in (block_start..block_end).enumerate() {
+                let sample = voice.next_sample();
+                output[0][sample_idx] += sample;
+            }
+        }
     }
 }
 
@@ -104,16 +160,6 @@ impl Plugin for Synthesizer {
         self.params.clone()
     }
 
-    // fn initialize(
-    //     &mut self,
-    //     _audio_io_layout: &AudioIOLayout,
-    //     buffer_config: &BufferConfig,
-    //     _context: &mut impl InitContext<Self>,
-    // ) -> bool {
-    //     let _sample_rate = buffer_config.sample_rate;
-    //     true
-    // }
-
     fn reset(&mut self) {
         self.phase_generator = create_phase_generator();
         self.voices.fill(None);
@@ -126,12 +172,34 @@ impl Plugin for Synthesizer {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let samples_count = buffer.samples();
+        let output = buffer.as_slice();
+        let mut block_start = 0usize;
+        let mut block_end = MAX_BLOCK_SIZE.min(samples_count);
+
+        while block_start < samples_count {
+            // process events
+            while let Some(event) = context.next_event() {
+                let timing = event.timing() as usize;
+                if timing <= block_start {
+                    self.process_event(event);
+                    continue;
+                }
+                if timing < block_end {
+                    block_end = timing;
+                    break;
+                }
+            }
+            self.render_sound(output, block_start, block_end);
+            self.update_envelopes();
+            self.clean_released_voices(context, block_end as u32);
+            //
+            block_start = block_end;
+            block_end = (block_start + MAX_BLOCK_SIZE).min(samples_count);
+        }
+
         ProcessStatus::Normal
     }
-}
-
-const fn compute_fallback_voice_id(note: u8, channel: u8) -> i32 {
-    note as i32 | ((channel as i32) << 16)
 }
 
 fn create_phase_generator() -> Pcg32 {

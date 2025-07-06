@@ -2,7 +2,7 @@ use std::f32;
 
 use nih_plug::prelude::Enum;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum Waveform {
     Sine,
     Square,
