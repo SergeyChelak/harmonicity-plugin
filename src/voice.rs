@@ -1,6 +1,9 @@
-use nih_plug::util;
+use nih_plug::{
+    prelude::{Smoother, SmoothingStyle},
+    util,
+};
 
-use crate::waveform::Waveform;
+use crate::{parameters::SynthParameters, waveform::Waveform};
 
 pub struct VoiceBuilder {
     sample_rate: f32,
@@ -11,6 +14,10 @@ pub struct VoiceBuilder {
     age: usize,
     waveform: Waveform,
     phase: f32,
+    attack_time: f32,
+    decay_time: f32,
+    sustain_level: f32,
+    release_time: f32,
 }
 
 impl VoiceBuilder {
@@ -24,6 +31,10 @@ impl VoiceBuilder {
             age: 0,
             waveform: Waveform::Sine,
             phase: 0.0,
+            attack_time: 50.0,
+            decay_time: 25.0,
+            sustain_level: 0.7,
+            release_time: 25.0,
         }
     }
 
@@ -48,13 +59,17 @@ impl VoiceBuilder {
         self
     }
 
-    pub fn waveform(mut self, waveform: Waveform) -> Self {
-        self.waveform = waveform;
+    pub fn phase(mut self, phase: f32) -> Self {
+        self.phase = phase;
         self
     }
 
-    pub fn phase(mut self, phase: f32) -> Self {
-        self.phase = phase;
+    pub fn parameters(mut self, params: &SynthParameters) -> Self {
+        self.attack_time = params.attack_time.value();
+        self.decay_time = params.decay_time.value();
+        self.sustain_level = params.sustain_level.value();
+        self.release_time = params.release_time.value();
+        self.waveform = params.wave_form.value();
         self
     }
 
@@ -63,6 +78,10 @@ impl VoiceBuilder {
             .voice_id
             .unwrap_or_else(|| compute_fallback_voice_id(self.note, self.channel));
         let phase_delta = util::midi_note_to_freq(self.note) / self.sample_rate;
+
+        let amp_envelope = Smoother::new(SmoothingStyle::Exponential(self.attack_time));
+        amp_envelope.set_target(self.sample_rate, ENVELOPE_ATTACK_LEVEL);
+
         Voice {
             voice_id,
             age: self.age,
@@ -73,6 +92,12 @@ impl VoiceBuilder {
             waveform: self.waveform,
             phase: self.phase,
             phase_delta,
+            amp_envelope,
+            attack_time: self.attack_time,
+            decay_time: self.decay_time,
+            sustain_level: self.sustain_level,
+            release_time: self.release_time,
+            sample_rate: self.sample_rate,
         }
     }
 }
@@ -88,6 +113,12 @@ pub struct Voice {
     waveform: Waveform,
     phase: f32,
     phase_delta: f32,
+    amp_envelope: Smoother<f32>,
+    attack_time: f32,
+    decay_time: f32,
+    sustain_level: f32,
+    release_time: f32,
+    sample_rate: f32,
 }
 
 impl Voice {
@@ -113,19 +144,53 @@ impl Voice {
 
     pub fn next_sample(&mut self) -> f32 {
         let sample = self.waveform.evaluate(self.phase);
-
         self.phase += self.phase_delta;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
         }
+        sample * self.velocity * self.amp_envelope.next()
+    }
 
-        sample
+    pub fn note_released(&mut self) {
+        self.state = VoiceState::Releasing;
+        self.update_amp_envelope_style(self.release_time, 0.0);
+    }
+
+    pub fn update_envelope(&mut self) {
+        use VoiceState::*;
+        let amp = self.amp_envelope.previous_value();
+        match self.state {
+            Attack if (amp - ENVELOPE_ATTACK_LEVEL).abs() < TOL => {
+                self.state = Decay;
+                self.update_amp_envelope_style(self.decay_time, self.sustain_level);
+            }
+            Decay if (amp - self.sustain_level).abs() < TOL => {
+                self.state = Sustain;
+            }
+            Releasing if amp.abs() < TOL => {
+                self.state = Released;
+            }
+            _ => {
+                // no op
+            }
+        }
+    }
+
+    fn update_amp_envelope_style(&mut self, time: f32, target: f32) {
+        self.amp_envelope.style = SmoothingStyle::Exponential(time);
+        self.amp_envelope.set_target(self.sample_rate, target);
     }
 }
+
+const TOL: f32 = 1e-10;
+const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
+const ENVELOPE_SUSTAIN_LEVEL: f32 = 1.0;
 
 #[derive(Clone)]
 pub enum VoiceState {
     Attack,
+    Decay,
+    Sustain,
     Releasing,
     Released,
 }

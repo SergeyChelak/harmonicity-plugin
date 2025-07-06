@@ -71,6 +71,7 @@ impl Synthesizer {
             .voice_id(voice_id)
             .phase(self.phase_generator.random())
             .velocity(velocity)
+            .parameters(&self.params)
             .build()
     }
 
@@ -81,7 +82,10 @@ impl Synthesizer {
     }
 
     fn update_envelopes(&mut self) {
-        // TODO: implement
+        self.voices
+            .iter_mut()
+            .filter_map(|voice| voice.as_mut())
+            .for_each(|voice| voice.update_envelope());
     }
 
     fn clean_released_voices(&mut self, context: &mut impl ProcessContext<Self>, timing: u32) {
@@ -116,10 +120,8 @@ impl Synthesizer {
         output[0][block_start..block_end].fill(0.0);
         // output[1][block_start..block_end].fill(0.0);
 
-        // let block_len = block_end - block_start;
         for voice in self.voices.iter_mut().filter_map(|v| v.as_mut()) {
-            // TODO: amp envelope
-            for (idx, sample_idx) in (block_start..block_end).enumerate() {
+            for sample_idx in block_start..block_end {
                 let sample = voice.next_sample();
                 output[0][sample_idx] += sample;
             }

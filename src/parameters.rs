@@ -8,15 +8,15 @@ use crate::waveform::Waveform;
 #[derive(Params)]
 pub struct SynthParameters {
     #[id = "env_attack"]
-    attack_time: FloatParam,
+    pub attack_time: FloatParam,
     #[id = "env_decay"]
-    decay_time: FloatParam,
+    pub decay_time: FloatParam,
     #[id = "env_sustain"]
-    sustain_level: FloatParam,
+    pub sustain_level: FloatParam,
     #[id = "env_release"]
-    release_time: FloatParam,
+    pub release_time: FloatParam,
     #[id = "oscillator_wave_form"]
-    wave_form: EnumParam<Waveform>,
+    pub wave_form: EnumParam<Waveform>,
 }
 
 impl Default for SynthParameters {
