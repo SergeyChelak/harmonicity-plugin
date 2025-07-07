@@ -3,14 +3,14 @@ use nih_plug::{
     prelude::FloatRange,
 };
 
-use crate::waveform::Waveform;
+use crate::{voice::OSCILLATORS_COUNT, waveform::Waveform};
 
 #[derive(Params, Default)]
 pub struct SynthParameters {
     #[nested(group = "Envelope")]
     pub envelope: EnvelopeParams,
-    #[nested(group = "Oscillator")]
-    pub oscillator: OscillatorParams,
+    #[nested(array, group = "Oscillator")]
+    pub oscillator: [OscillatorParams; OSCILLATORS_COUNT],
 }
 
 #[derive(Params)]

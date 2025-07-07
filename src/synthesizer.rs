@@ -89,12 +89,26 @@ impl Synthesizer {
         let age = self.next_age();
 
         let phase_delta = note.frequency() / sample_rate;
-        let oscillators = [Oscillator::new(
-            self.params.oscillator.waveform.value(),
-            0.3,
-            self.phase_generator.random(),
-            phase_delta,
-        )];
+        let oscillators = [
+            Oscillator::new(
+                self.params.oscillator[0].waveform.value(),
+                0.3,
+                self.phase_generator.random(),
+                phase_delta,
+            ),
+            Oscillator::new(
+                self.params.oscillator[1].waveform.value(),
+                0.3,
+                self.phase_generator.random(),
+                phase_delta,
+            ),
+            Oscillator::new(
+                self.params.oscillator[2].waveform.value(),
+                0.3,
+                self.phase_generator.random(),
+                phase_delta,
+            ),
+        ];
 
         Voice::new(sample_rate, voice_id, age, note, oscillators, envelope)
     }

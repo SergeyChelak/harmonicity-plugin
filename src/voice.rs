@@ -8,7 +8,7 @@ use crate::oscillator::Oscillator;
 
 const TOL: f32 = 1e-10;
 const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
-const OSCILLATORS_COUNT: usize = 1;
+pub const OSCILLATORS_COUNT: usize = 3;
 
 #[derive(Clone)]
 pub struct Voice {
