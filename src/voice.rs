@@ -4,98 +4,35 @@ use nih_plug::{
     util,
 };
 
-use crate::{parameters::SynthParameters, waveform::Waveform};
+use crate::oscillator::Oscillator;
 
 const TOL: f32 = 1e-10;
 const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
+const OSCILLATORS_COUNT: usize = 1;
 
-pub struct VoiceBuilder {
-    sample_rate: f32,
-    voice_id: Option<i32>,
-    note: u8,
-    channel: u8,
-    velocity: f32,
-    age: usize,
-    waveform: Waveform,
-    phase: f32,
-    attack_time: f32,
-    decay_time: f32,
-    sustain_level: f32,
-    release_time: f32,
+#[derive(Clone)]
+pub struct Envelope {
+    pub start_level: f32,
+    pub attack_time: f32,
+    pub decay_time: f32,
+    pub sustain_level: f32,
+    pub release_time: f32,
 }
 
-impl VoiceBuilder {
-    pub fn new(sample_rate: f32, params: &SynthParameters) -> Self {
-        Self {
-            sample_rate,
-            voice_id: None,
-            channel: 0,
-            note: 0,
-            velocity: 1.0,
-            age: 0,
-            waveform: params.oscillator_1.waveform.value(),
-            phase: 0.0,
-            attack_time: params.envelope.attack_time.value(),
-            decay_time: params.envelope.decay_time.value(),
-            sustain_level: params.envelope.sustain_level.value(),
-            release_time: params.envelope.release_time.value(),
-        }
+#[derive(Debug, Clone)]
+pub struct MidiNote {
+    pub channel: u8,
+    pub number: u8,
+    pub velocity: f32,
+}
+
+impl MidiNote {
+    pub fn source_id(&self) -> i32 {
+        self.number as i32 | ((self.channel as i32) << 16)
     }
 
-    pub fn voice_id(mut self, voice_id: Option<i32>) -> Self {
-        self.voice_id = voice_id;
-        self
-    }
-
-    pub fn channel_note(mut self, channel: u8, note: u8) -> Self {
-        self.channel = channel;
-        self.note = note;
-        self
-    }
-
-    pub fn velocity(mut self, velocity: f32) -> Self {
-        self.velocity = velocity;
-        self
-    }
-
-    pub fn age(mut self, age: usize) -> Self {
-        self.age = age;
-        self
-    }
-
-    pub fn phase(mut self, phase: f32) -> Self {
-        self.phase = phase;
-        self
-    }
-
-    pub fn build(self) -> Voice {
-        let voice_id = self
-            .voice_id
-            .unwrap_or_else(|| compute_fallback_voice_id(self.note, self.channel));
-        let phase_delta = util::midi_note_to_freq(self.note) / self.sample_rate;
-
-        let amp_envelope = Smoother::new(SmoothingStyle::Exponential(self.attack_time));
-        amp_envelope.reset(0.0);
-        amp_envelope.set_target(self.sample_rate, ENVELOPE_ATTACK_LEVEL);
-
-        Voice {
-            voice_id,
-            age: self.age,
-            channel: self.channel,
-            note_number: self.note,
-            velocity: self.velocity.sqrt(),
-            state: VoiceState::Attack,
-            waveform: self.waveform,
-            phase: self.phase,
-            phase_delta,
-            amp_envelope,
-            decay_time: self.decay_time,
-            sustain_level: self.sustain_level,
-            release_time: self.release_time,
-            sample_rate: self.sample_rate,
-            // TODO: fix hardcoded value
-            gain: 0.3,
-        }
+    pub fn frequency(&self) -> f32 {
+        util::midi_note_to_freq(self.number)
     }
 }
 
@@ -103,22 +40,42 @@ impl VoiceBuilder {
 pub struct Voice {
     voice_id: i32,
     age: usize,
-    channel: u8,
-    note_number: u8,
-    velocity: f32,
+    note: MidiNote,
+    oscillators: [Oscillator; OSCILLATORS_COUNT],
     state: VoiceState,
-    waveform: Waveform,
-    phase: f32,
-    phase_delta: f32,
     amp_envelope: Smoother<f32>,
-    decay_time: f32,
-    sustain_level: f32,
-    release_time: f32,
+    envelope: Envelope,
     sample_rate: f32,
-    gain: f32,
 }
 
 impl Voice {
+    pub fn new(
+        sample_rate: f32,
+        voice_id: i32,
+        age: usize,
+        note: MidiNote,
+        oscillators: [Oscillator; OSCILLATORS_COUNT],
+        envelope: Envelope,
+    ) -> Self {
+        let mut voice = Self {
+            sample_rate,
+            voice_id,
+            age,
+            note,
+            oscillators,
+            amp_envelope: Smoother::new(SmoothingStyle::None),
+            envelope,
+            state: VoiceState::Attack,
+        };
+        voice.prepare();
+        voice
+    }
+
+    fn prepare(&mut self) {
+        self.amp_envelope.reset(self.envelope.start_level);
+        self.update_amp_envelope_style(self.envelope.attack_time, ENVELOPE_ATTACK_LEVEL);
+    }
+
     pub fn age(&self) -> usize {
         self.age
     }
@@ -127,12 +84,8 @@ impl Voice {
         self.voice_id
     }
 
-    pub fn note(&self) -> u8 {
-        self.note_number
-    }
-
-    pub fn channel(&self) -> u8 {
-        self.channel
+    pub fn note(&self) -> &MidiNote {
+        &self.note
     }
 
     pub fn is_deaf(&self) -> bool {
@@ -143,12 +96,13 @@ impl Voice {
         if self.is_deaf() {
             return 0.0;
         }
-        let sample = self.waveform.evaluate(self.phase);
-        self.phase += self.phase_delta;
-        if self.phase >= 1.0 {
-            self.phase -= 1.0;
-        }
-        sample * self.velocity * self.amp_envelope.next() * self.gain
+        let sample = self
+            .oscillators
+            .iter_mut()
+            .map(|osc| osc.next_sample())
+            .sum::<f32>();
+
+        sample * self.amp_envelope.next() * self.note.velocity
     }
 
     pub fn choke(&mut self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
@@ -166,11 +120,11 @@ impl Voice {
         }
         nih_log!("[envelope] {channel} {note} releasing");
         self.state = VoiceState::Release;
-        self.update_amp_envelope_style(self.release_time, 0.0);
+        self.update_amp_envelope_style(self.envelope.release_time, 0.0);
     }
 
     fn is_relevant_voice(&self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
-        voice_id == Some(self.voice_id) || self.channel == channel && self.note_number == note
+        voice_id == Some(self.voice_id) || self.note.channel == channel && self.note.number == note
     }
 
     pub fn update_envelope(&mut self) {
@@ -180,9 +134,12 @@ impl Voice {
             Attack if (amp - ENVELOPE_ATTACK_LEVEL).abs() < TOL => {
                 nih_log!("[envelope] attack -> decay");
                 self.state = Decay;
-                self.update_amp_envelope_style(self.decay_time, self.sustain_level);
+                self.update_amp_envelope_style(
+                    self.envelope.decay_time,
+                    self.envelope.sustain_level,
+                );
             }
-            Decay if (amp - self.sustain_level).abs() < TOL => {
+            Decay if (amp - self.envelope.sustain_level).abs() < TOL => {
                 nih_log!("[envelope] decay -> sustain");
                 self.state = Sustain;
             }
@@ -209,8 +166,4 @@ pub enum VoiceState {
     Sustain,
     Release,
     Deaf,
-}
-
-const fn compute_fallback_voice_id(note: u8, channel: u8) -> i32 {
-    note as i32 | ((channel as i32) << 16)
 }

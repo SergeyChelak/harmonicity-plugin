@@ -2,7 +2,8 @@ use nih_plug::prelude::*;
 use std::sync::Arc;
 
 use crate::generator::Generator;
-use crate::voice::VoiceBuilder;
+use crate::oscillator::Oscillator;
+use crate::voice::{Envelope, MidiNote};
 
 use super::parameters::SynthParameters;
 use super::voice::Voice;
@@ -55,8 +56,7 @@ impl Synthesizer {
         };
 
         nih_log!(
-            "[synth] stealing voice with {}:{}",
-            old_voice.as_ref().unwrap().channel(),
+            "[synth] stealing voice with {:?}",
             old_voice.as_ref().unwrap().note()
         );
         Self::terminate_voice(context, timing, old_voice);
@@ -71,13 +71,32 @@ impl Synthesizer {
         note: u8,
         velocity: f32,
     ) -> Voice {
-        VoiceBuilder::new(sample_rate, &self.params)
-            .channel_note(channel, note)
-            .age(self.next_age())
-            .voice_id(voice_id)
-            .phase(self.phase_generator.random())
-            .velocity(velocity)
-            .build()
+        let note = MidiNote {
+            number: note,
+            channel,
+            velocity: velocity.sqrt(),
+        };
+
+        let envelope = Envelope {
+            start_level: 0.0,
+            attack_time: self.params.envelope.attack_time.value(),
+            decay_time: self.params.envelope.decay_time.value(),
+            sustain_level: self.params.envelope.sustain_level.value(),
+            release_time: self.params.envelope.release_time.value(),
+        };
+
+        let voice_id = voice_id.unwrap_or_else(|| note.source_id());
+        let age = self.next_age();
+
+        let phase_delta = note.frequency() / sample_rate;
+        let oscillators = [Oscillator::new(
+            self.params.oscillator_1.waveform.value(),
+            0.3,
+            self.phase_generator.random(),
+            phase_delta,
+        )];
+
+        Voice::new(sample_rate, voice_id, age, note, oscillators, envelope)
     }
 
     fn release_voice(&mut self, voice_id: Option<i32>, note: u8, channel: u8) {
@@ -114,17 +133,18 @@ impl Synthesizer {
         voice: &mut Option<Voice>,
     ) {
         let voice_ref = voice.as_ref().unwrap();
+        let note = voice_ref.note();
         nih_log!(
             "[synth] terminating voice with {}:{}",
-            voice_ref.channel(),
-            voice_ref.note()
+            note.channel,
+            note.number
         );
 
         context.send_event(NoteEvent::VoiceTerminated {
             timing,
             voice_id: Some(voice_ref.voice_id()),
-            channel: voice_ref.channel(),
-            note: voice_ref.note(),
+            channel: note.channel,
+            note: note.number,
         });
         *voice = None;
     }

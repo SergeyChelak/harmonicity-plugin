@@ -1,4 +1,5 @@
 mod generator;
+mod oscillator;
 mod parameters;
 mod synthesizer;
 mod voice;
