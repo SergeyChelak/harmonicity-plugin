@@ -105,7 +105,7 @@ impl Synthesizer {
         self.voices
             .iter_mut()
             .filter(|voice| voice.is_some())
-            .filter(|voice| voice.as_ref().unwrap().is_released())
+            .filter(|voice| voice.as_ref().unwrap().is_deaf())
             .for_each(|voice| Self::terminate_voice(context, timing, voice))
     }
 

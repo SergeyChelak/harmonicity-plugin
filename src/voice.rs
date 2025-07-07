@@ -144,12 +144,12 @@ impl Voice {
         self.channel
     }
 
-    pub fn is_released(&self) -> bool {
-        matches!(self.state, VoiceState::Released)
+    pub fn is_deaf(&self) -> bool {
+        matches!(self.state, VoiceState::Deaf)
     }
 
     pub fn next_sample(&mut self) -> f32 {
-        if self.is_released() {
+        if self.is_deaf() {
             return 0.0;
         }
         let sample = self.waveform.evaluate(self.phase);
@@ -165,7 +165,7 @@ impl Voice {
             return false;
         }
         nih_log!("[envelope] choke {channel} {note}");
-        self.state = VoiceState::Released;
+        self.state = VoiceState::Deaf;
         true
     }
 
@@ -174,7 +174,7 @@ impl Voice {
             return;
         }
         nih_log!("[envelope] {channel} {note} releasing");
-        self.state = VoiceState::Releasing;
+        self.state = VoiceState::Release;
         self.update_amp_envelope_style(self.release_time, 0.0);
     }
 
@@ -195,9 +195,9 @@ impl Voice {
                 nih_log!("[envelope] decay -> sustain");
                 self.state = Sustain;
             }
-            Releasing if amp.abs() < TOL => {
+            Release if amp.abs() < TOL => {
                 nih_log!("[envelope] release -> deaf");
-                self.state = Released;
+                self.state = Deaf;
             }
             _ => {
                 // no op
@@ -216,8 +216,8 @@ pub enum VoiceState {
     Attack,
     Decay,
     Sustain,
-    Releasing,
-    Released,
+    Release,
+    Deaf,
 }
 
 const fn compute_fallback_voice_id(note: u8, channel: u8) -> i32 {
