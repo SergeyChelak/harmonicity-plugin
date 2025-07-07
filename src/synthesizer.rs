@@ -1,22 +1,20 @@
 use nih_plug::prelude::*;
-use rand::Rng;
-use rand_pcg::Pcg32;
 use std::sync::Arc;
 
+use crate::generator::Generator;
 use crate::voice::VoiceBuilder;
 
 use super::parameters::SynthParameters;
 use super::voice::Voice;
 
 const MAX_VOICES: usize = 16;
-
 const MAX_BLOCK_SIZE: usize = 64;
 
 pub struct Synthesizer {
     voices: [Option<Voice>; MAX_VOICES],
     params: Arc<SynthParameters>,
     next_voice_age: usize,
-    phase_generator: Pcg32,
+    phase_generator: Generator,
 }
 
 impl Synthesizer {
@@ -191,7 +189,7 @@ impl Default for Synthesizer {
             voices: [0; MAX_VOICES].map(|_| None),
             params: Arc::new(Default::default()),
             next_voice_age: 0,
-            phase_generator: create_phase_generator(),
+            phase_generator: Generator::new(),
         }
     }
 }
@@ -219,9 +217,7 @@ impl Plugin for Synthesizer {
     }
 
     fn reset(&mut self) {
-        nih_log!("[synth] will reset");
-
-        self.phase_generator = create_phase_generator();
+        self.phase_generator.reset();
         self.voices.fill(None);
         self.next_voice_age = 0;
     }
@@ -264,8 +260,4 @@ impl Plugin for Synthesizer {
 
         ProcessStatus::Normal
     }
-}
-
-fn create_phase_generator() -> Pcg32 {
-    Pcg32::new(420, 1337)
 }
