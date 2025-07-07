@@ -25,7 +25,7 @@ pub struct VoiceBuilder {
 }
 
 impl VoiceBuilder {
-    pub fn new(sample_rate: f32) -> Self {
+    pub fn new(sample_rate: f32, params: &SynthParameters) -> Self {
         Self {
             sample_rate,
             voice_id: None,
@@ -33,12 +33,12 @@ impl VoiceBuilder {
             note: 0,
             velocity: 1.0,
             age: 0,
-            waveform: Waveform::Sine,
+            waveform: params.oscillator_1.waveform.value(),
             phase: 0.0,
-            attack_time: 50.0,
-            decay_time: 25.0,
-            sustain_level: 0.7,
-            release_time: 25.0,
+            attack_time: params.envelope.attack_time.value(),
+            decay_time: params.envelope.decay_time.value(),
+            sustain_level: params.envelope.sustain_level.value(),
+            release_time: params.envelope.release_time.value(),
         }
     }
 
@@ -65,15 +65,6 @@ impl VoiceBuilder {
 
     pub fn phase(mut self, phase: f32) -> Self {
         self.phase = phase;
-        self
-    }
-
-    pub fn parameters(mut self, params: &SynthParameters) -> Self {
-        self.attack_time = params.envelope.attack_time.value();
-        self.decay_time = params.envelope.decay_time.value();
-        self.sustain_level = params.envelope.sustain_level.value();
-        self.release_time = params.envelope.release_time.value();
-        self.waveform = params.oscillator_1.waveform.value();
         self
     }
 

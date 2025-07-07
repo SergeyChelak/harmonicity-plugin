@@ -71,13 +71,12 @@ impl Synthesizer {
         note: u8,
         velocity: f32,
     ) -> Voice {
-        VoiceBuilder::new(sample_rate)
+        VoiceBuilder::new(sample_rate, &self.params)
             .channel_note(channel, note)
             .age(self.next_age())
             .voice_id(voice_id)
             .phase(self.phase_generator.random())
             .velocity(velocity)
-            .parameters(&self.params)
             .build()
     }
 
