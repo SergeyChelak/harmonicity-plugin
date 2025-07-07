@@ -9,8 +9,8 @@ use crate::waveform::Waveform;
 pub struct SynthParameters {
     #[nested(group = "Envelope")]
     pub envelope: EnvelopeParams,
-    #[nested(group = "Oscillator 1")]
-    pub oscillator_1: OscillatorParams,
+    #[nested(group = "Oscillator")]
+    pub oscillator: OscillatorParams,
 }
 
 #[derive(Params)]

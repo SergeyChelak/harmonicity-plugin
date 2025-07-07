@@ -90,7 +90,7 @@ impl Synthesizer {
 
         let phase_delta = note.frequency() / sample_rate;
         let oscillators = [Oscillator::new(
-            self.params.oscillator_1.waveform.value(),
+            self.params.oscillator.waveform.value(),
             0.3,
             self.phase_generator.random(),
             phase_delta,

@@ -11,32 +11,6 @@ const ENVELOPE_ATTACK_LEVEL: f32 = 1.0;
 const OSCILLATORS_COUNT: usize = 1;
 
 #[derive(Clone)]
-pub struct Envelope {
-    pub start_level: f32,
-    pub attack_time: f32,
-    pub decay_time: f32,
-    pub sustain_level: f32,
-    pub release_time: f32,
-}
-
-#[derive(Debug, Clone)]
-pub struct MidiNote {
-    pub channel: u8,
-    pub number: u8,
-    pub velocity: f32,
-}
-
-impl MidiNote {
-    pub fn source_id(&self) -> i32 {
-        self.number as i32 | ((self.channel as i32) << 16)
-    }
-
-    pub fn frequency(&self) -> f32 {
-        util::midi_note_to_freq(self.number)
-    }
-}
-
-#[derive(Clone)]
 pub struct Voice {
     voice_id: i32,
     age: usize,
@@ -124,7 +98,7 @@ impl Voice {
     }
 
     fn is_relevant_voice(&self, voice_id: Option<i32>, channel: u8, note: u8) -> bool {
-        voice_id == Some(self.voice_id) || self.note.channel == channel && self.note.number == note
+        voice_id == Some(self.voice_id) || self.note.is_matches(channel, note)
     }
 
     pub fn update_envelope(&mut self) {
@@ -166,4 +140,34 @@ pub enum VoiceState {
     Sustain,
     Release,
     Deaf,
+}
+
+#[derive(Clone)]
+pub struct Envelope {
+    pub start_level: f32,
+    pub attack_time: f32,
+    pub decay_time: f32,
+    pub sustain_level: f32,
+    pub release_time: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct MidiNote {
+    pub channel: u8,
+    pub number: u8,
+    pub velocity: f32,
+}
+
+impl MidiNote {
+    pub fn source_id(&self) -> i32 {
+        self.number as i32 | ((self.channel as i32) << 16)
+    }
+
+    fn is_matches(&self, channel: u8, note: u8) -> bool {
+        self.channel == channel && self.number == note
+    }
+
+    pub fn frequency(&self) -> f32 {
+        util::midi_note_to_freq(self.number)
+    }
 }
