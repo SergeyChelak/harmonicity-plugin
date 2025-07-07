@@ -5,8 +5,16 @@ use nih_plug::{
 
 use crate::waveform::Waveform;
 
-#[derive(Params)]
+#[derive(Params, Default)]
 pub struct SynthParameters {
+    #[nested(group = "Envelope")]
+    pub envelope: EnvelopeParams,
+    #[nested(group = "Oscillator 1")]
+    pub oscillator_1: OscillatorParams,
+}
+
+#[derive(Params)]
+pub struct EnvelopeParams {
     #[id = "env_attack"]
     pub attack_time: FloatParam,
     #[id = "env_decay"]
@@ -15,18 +23,29 @@ pub struct SynthParameters {
     pub sustain_level: FloatParam,
     #[id = "env_release"]
     pub release_time: FloatParam,
-    #[id = "oscillator_wave_form"]
-    pub wave_form: EnumParam<Waveform>,
 }
 
-impl Default for SynthParameters {
+impl Default for EnvelopeParams {
     fn default() -> Self {
         Self {
-            attack_time: time_parameter("Attack", 200.0, 0.0, 2000.0),
-            decay_time: time_parameter("Decay", 100.0, 0.0, 2000.0),
+            attack_time: time_parameter("Attack", 25.0, 0.0, 2000.0),
+            decay_time: time_parameter("Decay", 15.0, 0.0, 2000.0),
             sustain_level: sustain_parameter("Sustain", 0.85),
-            release_time: time_parameter("Release", 100.0, 0.0, 2000.0),
-            wave_form: EnumParam::new("Waveform 1", Waveform::Sine),
+            release_time: time_parameter("Release", 10.0, 0.0, 2000.0),
+        }
+    }
+}
+
+#[derive(Params)]
+pub struct OscillatorParams {
+    #[id = "oscillator_wave_form"]
+    pub waveform: EnumParam<Waveform>,
+}
+
+impl Default for OscillatorParams {
+    fn default() -> Self {
+        Self {
+            waveform: EnumParam::new("Waveform", Waveform::Sine),
         }
     }
 }

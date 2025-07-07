@@ -69,11 +69,11 @@ impl VoiceBuilder {
     }
 
     pub fn parameters(mut self, params: &SynthParameters) -> Self {
-        self.attack_time = params.attack_time.value();
-        self.decay_time = params.decay_time.value();
-        self.sustain_level = params.sustain_level.value();
-        self.release_time = params.release_time.value();
-        self.waveform = params.wave_form.value();
+        self.attack_time = params.envelope.attack_time.value();
+        self.decay_time = params.envelope.decay_time.value();
+        self.sustain_level = params.envelope.sustain_level.value();
+        self.release_time = params.envelope.release_time.value();
+        self.waveform = params.oscillator_1.waveform.value();
         self
     }
 
