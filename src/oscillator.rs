@@ -8,6 +8,17 @@ pub struct Oscillator {
     gain: f32,
 }
 
+impl Default for Oscillator {
+    fn default() -> Self {
+        Self {
+            waveform: Waveform::Sine,
+            phase: Default::default(),
+            phase_delta: Default::default(),
+            gain: Default::default(),
+        }
+    }
+}
+
 impl Oscillator {
     pub fn new(waveform: Waveform, gain: f32, phase: f32, phase_delta: f32) -> Self {
         Oscillator {

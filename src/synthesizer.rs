@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::generator::Generator;
 use crate::oscillator::Oscillator;
-use crate::voice::{Envelope, MidiNote};
+use crate::voice::{Envelope, MidiNote, OSCILLATORS_COUNT};
 
 use super::parameters::SynthParameters;
 use super::voice::Voice;
@@ -87,28 +87,21 @@ impl Synthesizer {
 
         let voice_id = voice_id.unwrap_or_else(|| note.source_id());
         let age = self.next_age();
-
         let phase_delta = note.frequency() / sample_rate;
-        let oscillators = [
-            Oscillator::new(
-                self.params.oscillator[0].waveform.value(),
-                0.3,
-                self.phase_generator.random(),
-                phase_delta,
-            ),
-            Oscillator::new(
-                self.params.oscillator[1].waveform.value(),
-                0.3,
-                self.phase_generator.random(),
-                phase_delta,
-            ),
-            Oscillator::new(
-                self.params.oscillator[2].waveform.value(),
-                0.3,
-                self.phase_generator.random(),
-                phase_delta,
-            ),
-        ];
+
+        let mut oscillators = [0; OSCILLATORS_COUNT].map(|_| Oscillator::default());
+        self.params
+            .oscillator
+            .iter()
+            .zip(oscillators.iter_mut())
+            .for_each(|(param, osc)| {
+                *osc = Oscillator::new(
+                    param.waveform.value(),
+                    0.3,
+                    self.phase_generator.random(),
+                    phase_delta,
+                );
+            });
 
         Voice::new(sample_rate, voice_id, age, note, oscillators, envelope)
     }
